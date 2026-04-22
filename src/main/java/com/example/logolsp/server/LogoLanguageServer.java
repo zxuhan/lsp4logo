@@ -3,6 +3,7 @@ package com.example.logolsp.server;
 import com.example.logolsp.builtins.LogoBuiltins;
 import com.example.logolsp.document.DocumentStore;
 import com.example.logolsp.features.SemanticTokensProvider;
+import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
 import org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions;
@@ -14,6 +15,8 @@ import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
 import org.eclipse.lsp4j.services.TextDocumentService;
 import org.eclipse.lsp4j.services.WorkspaceService;
+
+import java.util.List;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -73,6 +76,10 @@ public final class LogoLanguageServer implements LanguageServer, LanguageClientA
         semantic.setFull(Boolean.TRUE);
         semantic.setRange(Boolean.FALSE);
         capabilities.setSemanticTokensProvider(semantic);
+
+        CompletionOptions completion = new CompletionOptions();
+        completion.setTriggerCharacters(List.of(":"));
+        capabilities.setCompletionProvider(completion);
 
         ServerInfo info = new ServerInfo("logo-lsp", "0.1.0");
         return CompletableFuture.completedFuture(new InitializeResult(capabilities, info));
