@@ -4,16 +4,20 @@ import com.example.logolsp.document.DocumentStore;
 import com.example.logolsp.document.ParsedDocument;
 import com.example.logolsp.features.CompletionProvider;
 import com.example.logolsp.features.DefinitionProvider;
+import com.example.logolsp.features.DocumentSymbolProvider;
 import com.example.logolsp.features.HoverProvider;
 import com.example.logolsp.features.SemanticTokensProvider;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.DocumentSymbol;
+import org.eclipse.lsp4j.DocumentSymbolParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.SemanticTokens;
 import org.eclipse.lsp4j.SemanticTokensParams;
+import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
@@ -134,6 +138,19 @@ public final class LogoTextDocumentService implements TextDocumentService {
             ParsedDocument doc = documentStore.get(uri).orElse(null);
             if (doc == null) return null;
             return HoverProvider.hover(doc, documentStore.builtins(), params.getPosition());
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>>
+            documentSymbol(DocumentSymbolParams params) {
+        String uri = params.getTextDocument().getUri();
+        return CompletableFuture.supplyAsync(() -> {
+            ParsedDocument doc = documentStore.get(uri).orElse(null);
+            if (doc == null) return List.of();
+            return DocumentSymbolProvider.documentSymbols(doc).stream()
+                    .map(Either::<SymbolInformation, DocumentSymbol>forRight)
+                    .toList();
         });
     }
 
