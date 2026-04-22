@@ -21,12 +21,14 @@ import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.Range;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Walks a parsed {@link Program}, populates a scope tree, and emits semantic
@@ -66,6 +68,7 @@ public final class Analyzer {
     private final Scope global = Scope.global();
     private final Map<ProcedureDef, Scope> procedureScopes = new IdentityHashMap<>();
     private final List<Diagnostic> diagnostics = new ArrayList<>();
+    private final Set<Symbol> usedSymbols = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private Analyzer(Program program, LogoBuiltins builtins) {
         this.program = Objects.requireNonNull(program, "program");
@@ -84,6 +87,7 @@ public final class Analyzer {
         buildProcedureScopes();
         collectTopLevelMakes();
         validateReferences();
+        reportUnusedSymbols();
     }
 
     // --- declaration passes -------------------------------------------------------
@@ -212,8 +216,11 @@ public final class Analyzer {
         if (e instanceof ColonVar cv) {
             String name = stripSigil(cv.token().lexeme());
             if (name.isEmpty()) return;
-            if (scope.resolve(name).isEmpty()) {
+            Optional<Symbol> resolved = scope.resolve(name);
+            if (resolved.isEmpty()) {
                 error(cv.token().range(), "undefined variable: " + cv.token().lexeme());
+            } else {
+                usedSymbols.add(resolved.get());
             }
         } else if (e instanceof WordRef wr) {
             if (!isKnownCallable(wr.token().lexeme())) {
@@ -248,6 +255,19 @@ public final class Analyzer {
                 .isPresent();
     }
 
+    // --- unused-symbol pass -------------------------------------------------------
+
+    private void reportUnusedSymbols() {
+        for (Scope scope : procedureScopes.values()) {
+            for (Symbol s : scope.localSymbols()) {
+                if (s.kind() != Symbol.Kind.PARAMETER && s.kind() != Symbol.Kind.LOCAL) continue;
+                if (usedSymbols.contains(s)) continue;
+                String label = s.kind() == Symbol.Kind.PARAMETER ? "unused parameter: " : "unused local: ";
+                warning(s.defRange(), label + s.name());
+            }
+        }
+    }
+
     // --- utilities ----------------------------------------------------------------
 
     private static String stripSigil(String lexeme) {
@@ -259,6 +279,13 @@ public final class Analyzer {
     private void error(Range range, String message) {
         Diagnostic d = new Diagnostic(range, message);
         d.setSeverity(DiagnosticSeverity.Error);
+        d.setSource(DIAGNOSTIC_SOURCE);
+        diagnostics.add(d);
+    }
+
+    private void warning(Range range, String message) {
+        Diagnostic d = new Diagnostic(range, message);
+        d.setSeverity(DiagnosticSeverity.Warning);
         d.setSource(DIAGNOSTIC_SOURCE);
         diagnostics.add(d);
     }

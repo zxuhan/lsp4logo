@@ -7,6 +7,7 @@ import com.example.logolsp.parser.ParseResult;
 import com.example.logolsp.parser.ast.Ast.ProcedureDef;
 import com.example.logolsp.parser.ast.Ast.TopLevel;
 import org.eclipse.lsp4j.Diagnostic;
+import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -156,6 +157,55 @@ class AnalyzerTest {
     void fixture_forward_ref_analyses_cleanly() throws IOException {
         SymbolTable st = analyzeFixture("forward_ref.logo");
         assertThat(st.diagnostics()).isEmpty();
+    }
+
+    @Test
+    void unused_parameter_emits_warning_not_error() {
+        SymbolTable st = analyze("TO ignore :unused\n  FD 100\nEND\n");
+        Diagnostic warning = st.diagnostics().stream()
+                .filter(d -> d.getMessage().equals("unused parameter: unused"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(warning.getSeverity()).isEqualTo(DiagnosticSeverity.Warning);
+    }
+
+    @Test
+    void unused_local_emits_warning() {
+        SymbolTable st = analyze("TO foo\n  LOCAL \"stale\n  FD 100\nEND\n");
+        Diagnostic warning = st.diagnostics().stream()
+                .filter(d -> d.getMessage().equals("unused local: stale"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(warning.getSeverity()).isEqualTo(DiagnosticSeverity.Warning);
+    }
+
+    @Test
+    void referenced_parameter_does_not_trigger_unused_warning() {
+        SymbolTable st = analyze("TO square :size\n  FD :size\nEND\n");
+        assertThat(st.diagnostics()).noneMatch(d -> d.getMessage().startsWith("unused parameter"));
+    }
+
+    @Test
+    void MAKE_writing_to_a_local_does_not_count_as_use() {
+        // Writing to a LOCAL isn't a read — the local should still be flagged.
+        SymbolTable st = analyze("TO foo\n  LOCAL \"x\n  MAKE \"x 5\nEND\n");
+        assertThat(st.diagnostics())
+                .anyMatch(d -> d.getMessage().equals("unused local: x"));
+    }
+
+    @Test
+    void local_used_on_right_hand_side_of_MAKE_is_not_flagged_unused() {
+        SymbolTable st = analyze("TO foo\n  LOCAL \"x\n  MAKE \"x 1\n  MAKE \"y :x + 1\nEND\n");
+        assertThat(st.diagnostics())
+                .noneMatch(d -> d.getMessage().equals("unused local: x"));
+    }
+
+    @Test
+    void top_level_MAKE_global_is_not_flagged_unused() {
+        // Globals may be used externally; we only warn on PARAMETER and LOCAL.
+        SymbolTable st = analyze("MAKE \"total 0\n");
+        assertThat(st.diagnostics())
+                .noneMatch(d -> d.getMessage().startsWith("unused"));
     }
 
     @Test
