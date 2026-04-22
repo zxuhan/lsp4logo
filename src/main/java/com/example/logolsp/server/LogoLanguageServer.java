@@ -81,6 +81,8 @@ public final class LogoLanguageServer implements LanguageServer, LanguageClientA
         completion.setTriggerCharacters(List.of(":"));
         capabilities.setCompletionProvider(completion);
 
+        capabilities.setHoverProvider(Boolean.TRUE);
+
         ServerInfo info = new ServerInfo("logo-lsp", "0.1.0");
         return CompletableFuture.completedFuture(new InitializeResult(capabilities, info));
     }

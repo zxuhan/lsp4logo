@@ -4,11 +4,14 @@ import com.example.logolsp.document.DocumentStore;
 import com.example.logolsp.document.ParsedDocument;
 import com.example.logolsp.features.CompletionProvider;
 import com.example.logolsp.features.DefinitionProvider;
+import com.example.logolsp.features.HoverProvider;
 import com.example.logolsp.features.SemanticTokensProvider;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.Hover;
+import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.SemanticTokens;
 import org.eclipse.lsp4j.SemanticTokensParams;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
@@ -121,6 +124,16 @@ public final class LogoTextDocumentService implements TextDocumentService {
             List<CompletionItem> items = CompletionProvider.completion(
                     doc, documentStore.builtins(), params.getPosition());
             return Either.forLeft(items);
+        });
+    }
+
+    @Override
+    public CompletableFuture<Hover> hover(HoverParams params) {
+        String uri = params.getTextDocument().getUri();
+        return CompletableFuture.supplyAsync(() -> {
+            ParsedDocument doc = documentStore.get(uri).orElse(null);
+            if (doc == null) return null;
+            return HoverProvider.hover(doc, documentStore.builtins(), params.getPosition());
         });
     }
 
