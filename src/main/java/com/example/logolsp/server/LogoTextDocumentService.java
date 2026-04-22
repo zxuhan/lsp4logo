@@ -3,7 +3,10 @@ package com.example.logolsp.server;
 import com.example.logolsp.document.DocumentStore;
 import com.example.logolsp.document.ParsedDocument;
 import com.example.logolsp.features.DefinitionProvider;
+import com.example.logolsp.features.SemanticTokensProvider;
 import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.SemanticTokens;
+import org.eclipse.lsp4j.SemanticTokensParams;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
@@ -92,6 +95,16 @@ public final class LogoTextDocumentService implements TextDocumentService {
             if (doc == null) return Either.forLeft(List.of());
             List<Location> locs = DefinitionProvider.definition(doc, params.getPosition());
             return Either.forLeft(locs);
+        });
+    }
+
+    @Override
+    public CompletableFuture<SemanticTokens> semanticTokensFull(SemanticTokensParams params) {
+        String uri = params.getTextDocument().getUri();
+        return CompletableFuture.supplyAsync(() -> {
+            ParsedDocument doc = documentStore.get(uri).orElse(null);
+            if (doc == null) return new SemanticTokens(List.of());
+            return SemanticTokensProvider.compute(doc, documentStore.builtins());
         });
     }
 

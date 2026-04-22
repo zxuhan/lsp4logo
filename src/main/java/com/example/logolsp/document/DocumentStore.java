@@ -25,6 +25,11 @@ public final class DocumentStore {
         this.builtins = Objects.requireNonNull(builtins, "builtins");
     }
 
+    /** The builtins registry this store parses with. Shared immutable instance. */
+    public LogoBuiltins builtins() {
+        return builtins;
+    }
+
     /** Parses {@code text} and stores it under {@code uri}, replacing any prior entry. */
     public ParsedDocument openOrReplace(String uri, String text) {
         Objects.requireNonNull(uri, "uri");

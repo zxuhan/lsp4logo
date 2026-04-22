@@ -2,8 +2,10 @@ package com.example.logolsp.server;
 
 import com.example.logolsp.builtins.LogoBuiltins;
 import com.example.logolsp.document.DocumentStore;
+import com.example.logolsp.features.SemanticTokensProvider;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
+import org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.ServerInfo;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
@@ -65,6 +67,13 @@ public final class LogoLanguageServer implements LanguageServer, LanguageClientA
         ServerCapabilities capabilities = new ServerCapabilities();
         capabilities.setTextDocumentSync(TextDocumentSyncKind.Full);
         capabilities.setDefinitionProvider(Boolean.TRUE);
+
+        SemanticTokensWithRegistrationOptions semantic = new SemanticTokensWithRegistrationOptions();
+        semantic.setLegend(SemanticTokensProvider.legend());
+        semantic.setFull(Boolean.TRUE);
+        semantic.setRange(Boolean.FALSE);
+        capabilities.setSemanticTokensProvider(semantic);
+
         ServerInfo info = new ServerInfo("logo-lsp", "0.1.0");
         return CompletableFuture.completedFuture(new InitializeResult(capabilities, info));
     }
