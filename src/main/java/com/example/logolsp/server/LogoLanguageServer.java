@@ -1,46 +1,69 @@
 package com.example.logolsp.server;
 
+import com.example.logolsp.builtins.LogoBuiltins;
+import com.example.logolsp.document.DocumentStore;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.ServerInfo;
+import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
 import org.eclipse.lsp4j.services.TextDocumentService;
 import org.eclipse.lsp4j.services.WorkspaceService;
 
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * LOGO language server.
  *
- * <p>Phase 0 wiring: this class completes the LSP {@code initialize} handshake with an empty
- * {@link ServerCapabilities} payload and delegates document/workspace events to stub services.
- * Feature capabilities (go-to-definition, semantic tokens, diagnostics, …) will be advertised
- * in later phases as their providers come online.
+ * <p>Advertises {@link TextDocumentSyncKind#Full} (the client sends complete text on every
+ * change). Additional capabilities — semantic tokens, definition, completion, hover,
+ * diagnostics delivery, document symbols — will be turned on in their respective phases.
  *
- * <p>Lifecycle follows the LSP specification: a client sends {@code initialize}, optionally
- * {@code shutdown}, then {@code exit}. Per spec, {@code exit} without a prior {@code shutdown}
- * terminates the process with exit code {@code 1}; otherwise {@code 0}.
+ * <h2>Lifecycle</h2>
+ * Follows the LSP spec: {@code initialize} → {@code initialized} → … → {@code shutdown} →
+ * {@code exit}. Per spec, {@code exit} without a prior {@code shutdown} terminates with
+ * code {@code 1}; otherwise {@code 0}. The termination action is delegated to an
+ * injected {@link Consumer} so tests can drive the server in-process without
+ * {@code System.exit}ing the test JVM.
  */
 public final class LogoLanguageServer implements LanguageServer, LanguageClientAware {
 
     private static final Logger LOGGER = Logger.getLogger(LogoLanguageServer.class.getName());
 
-    private final LogoTextDocumentService textDocumentService = new LogoTextDocumentService();
-    private final LogoWorkspaceService workspaceService = new LogoWorkspaceService();
+    private final DocumentStore documentStore;
+    private final LogoTextDocumentService textDocumentService;
+    private final LogoWorkspaceService workspaceService;
+    private final Consumer<Integer> onExit;
 
     private volatile LanguageClient client;
     private volatile boolean shutdownRequested;
+
+    /** Production constructor: exits the JVM on {@code exit}. */
+    public LogoLanguageServer() {
+        this(new DocumentStore(LogoBuiltins.loadDefault()), System::exit);
+    }
+
+    /** Test-friendly constructor. */
+    LogoLanguageServer(DocumentStore documentStore, Consumer<Integer> onExit) {
+        this.documentStore = Objects.requireNonNull(documentStore, "documentStore");
+        this.onExit = Objects.requireNonNull(onExit, "onExit");
+        this.textDocumentService = new LogoTextDocumentService(documentStore, this::getClient);
+        this.workspaceService = new LogoWorkspaceService();
+    }
 
     @Override
     public CompletableFuture<InitializeResult> initialize(InitializeParams params) {
         LOGGER.log(Level.INFO, "initialize from {0}",
                 params.getClientInfo() != null ? params.getClientInfo().getName() : "<unknown>");
         ServerCapabilities capabilities = new ServerCapabilities();
+        capabilities.setTextDocumentSync(TextDocumentSyncKind.Full);
         ServerInfo info = new ServerInfo("logo-lsp", "0.1.0");
         return CompletableFuture.completedFuture(new InitializeResult(capabilities, info));
     }
@@ -56,7 +79,7 @@ public final class LogoLanguageServer implements LanguageServer, LanguageClientA
     public void exit() {
         int code = shutdownRequested ? 0 : 1;
         LOGGER.log(Level.INFO, "exit (code={0})", code);
-        System.exit(code);
+        onExit.accept(code);
     }
 
     @Override
@@ -74,7 +97,7 @@ public final class LogoLanguageServer implements LanguageServer, LanguageClientA
         this.client = client;
     }
 
-    /** Returns the connected language client, or {@code null} before {@link #connect} is called. */
+    /** The connected language client, or {@code null} before {@link #connect} is called. */
     LanguageClient getClient() {
         return client;
     }
