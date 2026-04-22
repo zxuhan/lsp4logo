@@ -90,6 +90,7 @@ public final class Ast {
             permits NumberLit, ColonVar, QuoteWord, WordRef, FunctionCall,
                     BinaryOp, UnaryOp, ListLit, ParenExpr {}
 
+    /** A numeric literal: {@code 42}, {@code 3.14}, {@code .5}. */
     public record NumberLit(Token token) implements Expression {
         public NumberLit {
             Objects.requireNonNull(token, "token");
@@ -97,6 +98,7 @@ public final class Ast {
         @Override public Range range() { return token.range(); }
     }
 
+    /** A variable reference: {@code :size}. */
     public record ColonVar(Token token) implements Expression {
         public ColonVar {
             Objects.requireNonNull(token, "token");
@@ -104,6 +106,7 @@ public final class Ast {
         @Override public Range range() { return token.range(); }
     }
 
+    /** A word literal: {@code "hello}. Used as data (lists, MAKE target, etc.). */
     public record QuoteWord(Token token) implements Expression {
         public QuoteWord {
             Objects.requireNonNull(token, "token");
@@ -111,7 +114,7 @@ public final class Ast {
         @Override public Range range() { return token.range(); }
     }
 
-    /** A bare word used in an expression position with no resolvable arity. */
+    /** A bare word used at expression position with no resolvable arity (0-arity call). */
     public record WordRef(Token token) implements Expression {
         public WordRef {
             Objects.requireNonNull(token, "token");
@@ -119,7 +122,7 @@ public final class Ast {
         @Override public Range range() { return token.range(); }
     }
 
-    /** A procedure invocation at expression position: returns a value. */
+    /** A procedure invocation at expression position, consuming its fixed arity of arguments. */
     public record FunctionCall(Token head, List<Expression> arguments, Range range) implements Expression {
         public FunctionCall {
             Objects.requireNonNull(head, "head");
@@ -129,6 +132,7 @@ public final class Ast {
         }
     }
 
+    /** Infix arithmetic or comparison: {@code left <op> right}. */
     public record BinaryOp(Expression left, Token operator, Expression right, Range range) implements Expression {
         public BinaryOp {
             Objects.requireNonNull(left, "left");
@@ -138,6 +142,7 @@ public final class Ast {
         }
     }
 
+    /** Prefix unary minus: {@code -x}. */
     public record UnaryOp(Token operator, Expression operand, Range range) implements Expression {
         public UnaryOp {
             Objects.requireNonNull(operator, "operator");

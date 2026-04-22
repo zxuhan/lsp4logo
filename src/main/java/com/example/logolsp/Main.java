@@ -35,6 +35,11 @@ public final class Main {
 
     private Main() {}
 
+    /**
+     * LSP server entry point. Defaults to stdio; pass {@code --socket <port>} to
+     * bind a loopback TCP listener instead. Any other argument triggers an
+     * {@link IllegalArgumentException}.
+     */
     public static void main(String[] args) throws Exception {
         configureStderrLogging();
         OptionalInt socketPort = parseSocketPort(args);

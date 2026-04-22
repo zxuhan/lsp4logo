@@ -35,6 +35,13 @@ tasks.test {
     useJUnitPlatform()
 }
 
+// Records in modern Java auto-generate accessors and constructors; requiring @param
+// on every one creates noise for no comprehension benefit. Disable the "missing"
+// doclint category while keeping the valuable checks (broken @link, bad HTML, etc.).
+tasks.withType<Javadoc>().configureEach {
+    (options as StandardJavadocDocletOptions).addStringOption("Xdoclint:all,-missing", "-quiet")
+}
+
 tasks.shadowJar {
     archiveBaseName.set("logo-lsp")
     archiveClassifier.set("")

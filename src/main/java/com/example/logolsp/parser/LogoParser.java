@@ -69,6 +69,15 @@ public final class LogoParser {
         this.builtins = Objects.requireNonNull(builtins, "builtins");
     }
 
+    /**
+     * Runs the two-pass parse.
+     *
+     * <p>Call this <strong>once</strong> per {@code LogoParser} instance — the parser
+     * is stateful (it mutates an internal position pointer and diagnostics list).
+     * Create a fresh instance for each new token stream.
+     *
+     * @return the program AST and any syntactic diagnostics collected during the parse
+     */
     public ParseResult parse() {
         collectUserArities();
         Program program = parseProgram();
