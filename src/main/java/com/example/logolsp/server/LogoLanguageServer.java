@@ -64,6 +64,7 @@ public final class LogoLanguageServer implements LanguageServer, LanguageClientA
                 params.getClientInfo() != null ? params.getClientInfo().getName() : "<unknown>");
         ServerCapabilities capabilities = new ServerCapabilities();
         capabilities.setTextDocumentSync(TextDocumentSyncKind.Full);
+        capabilities.setDefinitionProvider(Boolean.TRUE);
         ServerInfo info = new ServerInfo("logo-lsp", "0.1.0");
         return CompletableFuture.completedFuture(new InitializeResult(capabilities, info));
     }

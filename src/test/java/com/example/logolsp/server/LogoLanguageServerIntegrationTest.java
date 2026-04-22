@@ -2,13 +2,17 @@ package com.example.logolsp.server;
 
 import com.example.logolsp.builtins.LogoBuiltins;
 import com.example.logolsp.document.DocumentStore;
+import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
+import org.eclipse.lsp4j.Location;
+import org.eclipse.lsp4j.LocationLink;
 import org.eclipse.lsp4j.MessageActionItem;
 import org.eclipse.lsp4j.MessageParams;
+import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.ShowMessageRequestParams;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
@@ -136,6 +140,30 @@ class LogoLanguageServerIntegrationTest {
         assertThat(sync).isNotNull();
         assertThat(sync.isLeft()).isTrue();
         assertThat(sync.getLeft()).isEqualTo(TextDocumentSyncKind.Full);
+        assertThat(result.getCapabilities().getDefinitionProvider().getLeft()).isTrue();
+    }
+
+    @Test
+    void textDocument_definition_round_trip_finds_the_procedure_def() throws Exception {
+        proxy.initialize(new InitializeParams()).get(AWAIT_MILLIS, TimeUnit.MILLISECONDS);
+        String src = "TO greet\n  FD 10\nEND\ngreet\n";
+        TextDocumentItem doc = new TextDocumentItem("file:///t.logo", "logo", 1, src);
+        proxy.getTextDocumentService().didOpen(new DidOpenTextDocumentParams(doc));
+        client.awaitDiagnostics();
+
+        // Click on the call site "greet" at line 3, column 2.
+        DefinitionParams params = new DefinitionParams(
+                new TextDocumentIdentifier("file:///t.logo"), new Position(3, 2));
+        Either<List<? extends Location>, List<? extends LocationLink>> result =
+                proxy.getTextDocumentService().definition(params)
+                        .get(AWAIT_MILLIS, TimeUnit.MILLISECONDS);
+        assertThat(result.isLeft()).isTrue();
+        List<? extends Location> locations = result.getLeft();
+        assertThat(locations).hasSize(1);
+        Location loc = locations.get(0);
+        assertThat(loc.getUri()).isEqualTo("file:///t.logo");
+        // Definition is on line 0 (the "greet" after "TO ").
+        assertThat(loc.getRange().getStart().getLine()).isEqualTo(0);
     }
 
     @Test

@@ -2,17 +2,23 @@ package com.example.logolsp.server;
 
 import com.example.logolsp.document.DocumentStore;
 import com.example.logolsp.document.ParsedDocument;
+import com.example.logolsp.features.DefinitionProvider;
+import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.Location;
+import org.eclipse.lsp4j.LocationLink;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
+import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.TextDocumentService;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 
@@ -75,6 +81,18 @@ public final class LogoTextDocumentService implements TextDocumentService {
     @Override
     public void didSave(DidSaveTextDocumentParams params) {
         LOGGER.fine(() -> "didSave " + params.getTextDocument().getUri());
+    }
+
+    @Override
+    public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>>
+            definition(DefinitionParams params) {
+        String uri = params.getTextDocument().getUri();
+        return CompletableFuture.supplyAsync(() -> {
+            ParsedDocument doc = documentStore.get(uri).orElse(null);
+            if (doc == null) return Either.forLeft(List.of());
+            List<Location> locs = DefinitionProvider.definition(doc, params.getPosition());
+            return Either.forLeft(locs);
+        });
     }
 
     private void publishDiagnostics(ParsedDocument doc) {
