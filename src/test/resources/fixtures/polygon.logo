@@ -1,0 +1,5 @@
+TO polygon :sides :size
+  REPEAT :sides [ FD :size RT 360 / :sides ]
+END
+
+polygon 6 80

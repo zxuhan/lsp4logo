@@ -1,0 +1,9 @@
+TO
+  FD 100
+END
+
+TO good :x
+  FD :x
+END
+
+good 50

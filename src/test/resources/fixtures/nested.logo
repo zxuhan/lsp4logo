@@ -1,0 +1,10 @@
+TO corner :size
+  FD :size
+  RT 90
+END
+
+TO square :size
+  REPEAT 4 [ corner :size ]
+END
+
+square 60
