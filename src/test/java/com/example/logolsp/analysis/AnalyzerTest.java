@@ -163,7 +163,7 @@ class AnalyzerTest {
     void unused_parameter_emits_warning_not_error() {
         SymbolTable st = analyze("TO ignore :unused\n  FD 100\nEND\n");
         Diagnostic warning = st.diagnostics().stream()
-                .filter(d -> d.getMessage().equals("unused parameter: unused"))
+                .filter(d -> d.getMessage().equals("unused parameter: :unused"))
                 .findFirst()
                 .orElseThrow();
         assertThat(warning.getSeverity()).isEqualTo(DiagnosticSeverity.Warning);
@@ -173,7 +173,7 @@ class AnalyzerTest {
     void unused_local_emits_warning() {
         SymbolTable st = analyze("TO foo\n  LOCAL \"stale\n  FD 100\nEND\n");
         Diagnostic warning = st.diagnostics().stream()
-                .filter(d -> d.getMessage().equals("unused local: stale"))
+                .filter(d -> d.getMessage().equals("unused local: :stale"))
                 .findFirst()
                 .orElseThrow();
         assertThat(warning.getSeverity()).isEqualTo(DiagnosticSeverity.Warning);
@@ -190,14 +190,14 @@ class AnalyzerTest {
         // Writing to a LOCAL isn't a read — the local should still be flagged.
         SymbolTable st = analyze("TO foo\n  LOCAL \"x\n  MAKE \"x 5\nEND\n");
         assertThat(st.diagnostics())
-                .anyMatch(d -> d.getMessage().equals("unused local: x"));
+                .anyMatch(d -> d.getMessage().equals("unused local: :x"));
     }
 
     @Test
     void local_used_on_right_hand_side_of_MAKE_is_not_flagged_unused() {
         SymbolTable st = analyze("TO foo\n  LOCAL \"x\n  MAKE \"x 1\n  MAKE \"y :x + 1\nEND\n");
         assertThat(st.diagnostics())
-                .noneMatch(d -> d.getMessage().equals("unused local: x"));
+                .noneMatch(d -> d.getMessage().equals("unused local: :x"));
     }
 
     @Test

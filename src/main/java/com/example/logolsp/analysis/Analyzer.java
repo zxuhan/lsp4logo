@@ -262,7 +262,7 @@ public final class Analyzer {
             for (Symbol s : scope.localSymbols()) {
                 if (s.kind() != Symbol.Kind.PARAMETER && s.kind() != Symbol.Kind.LOCAL) continue;
                 if (usedSymbols.contains(s)) continue;
-                String label = s.kind() == Symbol.Kind.PARAMETER ? "unused parameter: " : "unused local: ";
+                String label = s.kind() == Symbol.Kind.PARAMETER ? "unused parameter: :" : "unused local: :";
                 warning(s.defRange(), label + s.name());
             }
         }
