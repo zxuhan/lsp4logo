@@ -20,13 +20,14 @@ Required:
 
 Bonuses:
 
-- [x] **Diagnostics** — syntax errors, missing `END`, too-few arguments,
+- [x] **Diagnostics** — syntax errors, missing `END`, too-few/too-many arguments,
   duplicate procedure, duplicate parameter, unknown procedure, undefined
   variable, unused parameter (warning), unused local (warning)
 - [x] **Completion** — context-aware: variables after `:`, keywords + built-ins +
   user procedures elsewhere
-- [x] **Hover** — signature + docs for built-ins, signature for user procedures,
-  kind label for variables
+- [x] **Hover** — signature + docs for built-ins, signature for user procedures
+  (with any contiguous `;`-prefixed comment block above the `TO` lifted in as
+  a doc comment), kind label for variables
 - [x] **Document symbols** — outline view of every `TO` block, parameters as
   children
 
@@ -121,22 +122,25 @@ Manual verification steps per feature: see [`docs/manual-test.md`](docs/manual-t
                           ▼
          ┌─────────────────────────────────────────────┐
          │ feature providers (stateless, per-request)  │
-         │   DefinitionProvider  HoverProvider         │
-         │   SemanticTokensProvider  CompletionProvider│
-         │   DiagnosticsProvider* DocumentSymbolProvider│
+         │   DefinitionProvider     HoverProvider      │
+         │   SemanticTokensProvider CompletionProvider │
+         │   DocumentSymbolProvider                    │
          └─────────────────────────────────────────────┘
 ```
 
-*Diagnostics are produced during parse/analyse and pushed via
-`LanguageClient.publishDiagnostics()` — there's no separate provider class.
+Diagnostics aren't a separate provider: the parser and analyzer collect them as they
+build the `ParsedDocument`, and the document service pushes them via
+`LanguageClient.publishDiagnostics()` on every `didOpen` / `didChange`.
 
 **Invariants:**
 
 - `ParsedDocument` is immutable; every field is derived from the text.
 - Full reparse on every `didChange` (LOGO files are small; incremental parsing isn't
   worth the complexity — see [ADR-005](#design-decisions)).
-- Feature providers are stateless, take `(ParsedDocument, params)` and return LSP
-  types. They're trivially unit-testable and thread-safe.
+- Feature providers are stateless, take `(ParsedDocument, params, CancelChecker)` and
+  return LSP types. They're trivially unit-testable, thread-safe, and cooperate with
+  LSP cancellation — long AST walks check `checker.checkCanceled()` between recursions
+  so superseded requests abort instead of running to completion.
 - Parser recovers at `NEWLINE` / `END` / `TO` / `]`; it never throws.
 - Built-in primitives are *data*, loaded from `builtins.json`.
 
@@ -165,6 +169,7 @@ logo-lsp/
     │   │   └── LogoLexer.java
     │   ├── parser/
     │   │   ├── LogoParser.java              # recursive-descent, error-recovering
+    │   │   ├── LogoKeywords.java            # canonical {TO, END} set
     │   │   ├── ParseResult.java
     │   │   └── ast/Ast.java                 # sealed hierarchy, 16 node types
     │   ├── analysis/
@@ -173,12 +178,15 @@ logo-lsp/
     │   │   └── Analyzer.java
     │   ├── builtins/
     │   │   └── LogoBuiltins.java            # loads builtins.json via Gson
-    │   └── features/
-    │       ├── DefinitionProvider.java
-    │       ├── SemanticTokensProvider.java
-    │       ├── CompletionProvider.java
-    │       ├── HoverProvider.java
-    │       └── DocumentSymbolProvider.java
+    │   ├── features/
+    │   │   ├── DefinitionProvider.java
+    │   │   ├── SemanticTokensProvider.java
+    │   │   ├── CompletionProvider.java
+    │   │   ├── HoverProvider.java
+    │   │   └── DocumentSymbolProvider.java
+    │   └── util/
+    │       ├── Ranges.java                  # half-open LSP range containment
+    │       └── Names.java                   # sigil-stripping for :var / "word
     ├── main/resources/
     │   └── builtins.json                    # Turtle-Academy-consistent primitives
     └── test/
@@ -214,6 +222,12 @@ development; only the important ones are inlined here.)
 - **Lexical scoping for a dynamically-scoped language** (ADR-007). LOGO is
   traditionally dynamically scoped, but for LSP navigation that's useless — the
   user wants "jump to the nearest enclosing `:x`," which is lexical.
+- **Two true keywords, not nine.** Only `TO` and `END` — the procedure delimiters —
+  are syntax. `IF`, `IFELSE`, `REPEAT`, `MAKE`, `LOCAL`, `OUTPUT`, `STOP` and the
+  rest are callable primitives (data in `builtins.json`), so they're highlighted
+  and completed as functions with the `defaultLibrary` modifier rather than as
+  keywords. Keeping the keyword set tiny avoids the bug where the keyword list
+  and the builtins list disagree.
 - **Turtle-Academy-only dialect scope** (ADR-010). `builtins.json` is populated
   only with primitives observable in Turtle Academy's lessons and playground.
   Other LOGO dialects (UCBLogo, MSWLogo, Berkeley Logo, NetLogo) are explicitly
@@ -228,30 +242,27 @@ development; only the important ones are inlined here.)
 ```
 
 Runs the full JUnit 5 + AssertJ suite: lexer, parser, analyzer, every feature
-provider, and an in-process LSP4J integration test that drives
-`initialize` → `didOpen` → `textDocument/definition` over piped streams.
+provider, a per-provider cancellation contract test, and an in-process LSP4J
+integration test that drives `initialize` → `didOpen` → `textDocument/definition`
+over piped streams.
 
-The suite currently has **143 tests across 13 test classes**; zero warnings.
+The suite currently has **155 tests across 14 test classes**; zero warnings.
 
 ---
 
 ## Known limitations
 
 - **Find-references** is not implemented (only its inverse, go-to-definition).
-  A future phase would invert the reference walk to collect all sites.
+  Inverting the reference walk would land it.
 - **Rename** is not implemented; it would build on find-references.
 - **Incremental reparse** (`TextDocumentSyncKind.Incremental`) is not supported;
   we advertise `Full` sync. For LOGO-size files this is microseconds.
-- **Doc comments on user procedures** are not parsed into hover. Only built-ins
-  carry documentation (from `builtins.json`). A future extension would lift
-  `;`-prefixed lines immediately above a `TO` into the hover payload.
 - **Workspace-level features** — no `workspace/symbol`, no cross-file symbol
   resolution, no file watchers. One LOGO source file is one analysis unit.
 - **Signature help** during function-call argument typing is not implemented.
-- **Dialect verification** — the Turtle Academy dialect decisions are
-  provisional and documented for confirmation during manual testing (case
-  sensitivity, forward references, exact primitive list). See
-  `docs/manual-test.md`.
+- **Dialect verification** — the Turtle Academy dialect decisions (case
+  sensitivity, forward references, exact primitive list) are validated against
+  the playground but not exhaustively. See `docs/manual-test.md`.
 
 ---
 

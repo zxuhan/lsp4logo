@@ -27,9 +27,9 @@ import java.util.logging.Logger;
 /**
  * LOGO language server.
  *
- * <p>Advertises {@link TextDocumentSyncKind#Full} (the client sends complete text on every
- * change). Additional capabilities — semantic tokens, definition, completion, hover,
- * diagnostics delivery, document symbols — will be turned on in their respective phases.
+ * <p>Advertises {@link TextDocumentSyncKind#Full} sync, definition, semantic tokens,
+ * completion (trigger {@code :}), hover, and document symbols. Diagnostics are
+ * pushed by the document service on every {@code didOpen} / {@code didChange}.
  *
  * <h2>Lifecycle</h2>
  * Follows the LSP spec: {@code initialize} → {@code initialized} → … → {@code shutdown} →

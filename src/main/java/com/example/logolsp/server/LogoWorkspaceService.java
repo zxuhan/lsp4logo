@@ -7,9 +7,11 @@ import org.eclipse.lsp4j.services.WorkspaceService;
 import java.util.logging.Logger;
 
 /**
- * Phase 0 stub for workspace-scoped LSP notifications.
+ * Workspace-scoped LSP notifications.
  *
- * <p>No workspace features are advertised yet, so these handlers merely log and return.
+ * <p>This server is single-file: no {@code workspace/symbol}, no cross-file resolution,
+ * no file watchers. The handlers below merely log and return so the protocol stays
+ * well-formed if a client sends them.
  */
 public final class LogoWorkspaceService implements WorkspaceService {
 
