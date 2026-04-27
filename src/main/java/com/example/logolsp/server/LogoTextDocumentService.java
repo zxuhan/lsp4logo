@@ -26,6 +26,7 @@ import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.LocationLink;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
+import org.eclipse.lsp4j.jsonrpc.CompletableFutures;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.TextDocumentService;
@@ -101,10 +102,10 @@ public final class LogoTextDocumentService implements TextDocumentService {
     public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>>
             definition(DefinitionParams params) {
         String uri = params.getTextDocument().getUri();
-        return CompletableFuture.supplyAsync(() -> {
+        return CompletableFutures.computeAsync(checker -> {
             ParsedDocument doc = documentStore.get(uri).orElse(null);
             if (doc == null) return Either.forLeft(List.of());
-            List<Location> locs = DefinitionProvider.definition(doc, params.getPosition());
+            List<Location> locs = DefinitionProvider.definition(doc, params.getPosition(), checker);
             return Either.forLeft(locs);
         });
     }
@@ -112,21 +113,21 @@ public final class LogoTextDocumentService implements TextDocumentService {
     @Override
     public CompletableFuture<SemanticTokens> semanticTokensFull(SemanticTokensParams params) {
         String uri = params.getTextDocument().getUri();
-        return CompletableFuture.supplyAsync(() -> {
+        return CompletableFutures.computeAsync(checker -> {
             ParsedDocument doc = documentStore.get(uri).orElse(null);
             if (doc == null) return new SemanticTokens(List.of());
-            return SemanticTokensProvider.compute(doc, documentStore.builtins());
+            return SemanticTokensProvider.compute(doc, documentStore.builtins(), checker);
         });
     }
 
     @Override
     public CompletableFuture<Either<List<CompletionItem>, CompletionList>> completion(CompletionParams params) {
         String uri = params.getTextDocument().getUri();
-        return CompletableFuture.supplyAsync(() -> {
+        return CompletableFutures.computeAsync(checker -> {
             ParsedDocument doc = documentStore.get(uri).orElse(null);
             if (doc == null) return Either.forLeft(List.of());
             List<CompletionItem> items = CompletionProvider.completion(
-                    doc, documentStore.builtins(), params.getPosition());
+                    doc, documentStore.builtins(), params.getPosition(), checker);
             return Either.forLeft(items);
         });
     }
@@ -134,10 +135,10 @@ public final class LogoTextDocumentService implements TextDocumentService {
     @Override
     public CompletableFuture<Hover> hover(HoverParams params) {
         String uri = params.getTextDocument().getUri();
-        return CompletableFuture.supplyAsync(() -> {
+        return CompletableFutures.computeAsync(checker -> {
             ParsedDocument doc = documentStore.get(uri).orElse(null);
             if (doc == null) return null;
-            return HoverProvider.hover(doc, documentStore.builtins(), params.getPosition());
+            return HoverProvider.hover(doc, documentStore.builtins(), params.getPosition(), checker);
         });
     }
 
@@ -145,10 +146,10 @@ public final class LogoTextDocumentService implements TextDocumentService {
     public CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>>
             documentSymbol(DocumentSymbolParams params) {
         String uri = params.getTextDocument().getUri();
-        return CompletableFuture.supplyAsync(() -> {
+        return CompletableFutures.computeAsync(checker -> {
             ParsedDocument doc = documentStore.get(uri).orElse(null);
             if (doc == null) return List.of();
-            return DocumentSymbolProvider.documentSymbols(doc).stream()
+            return DocumentSymbolProvider.documentSymbols(doc, checker).stream()
                     .map(Either::<SymbolInformation, DocumentSymbol>forRight)
                     .toList();
         });

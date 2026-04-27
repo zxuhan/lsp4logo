@@ -99,13 +99,18 @@ class SemanticTokensProviderTest {
     }
 
     @Test
-    void REPEAT_IF_IFELSE_MAKE_LOCAL_OUTPUT_STOP_are_keywords() {
-        for (String kw : List.of("REPEAT", "IF", "IFELSE", "MAKE", "LOCAL", "OUTPUT", "STOP")) {
-            // Use a minimal context so arity doesn't blow up: wrap in a lookup-friendly line.
-            String src = kw + " 1 [ ]";
+    void only_TO_and_END_are_keywords_other_primitives_are_default_library_functions() {
+        // TO/END are the only true syntactic keywords. IF/REPEAT/MAKE/etc. are callable
+        // primitives — they get the "function" type with the "defaultLibrary" modifier.
+        for (String prim : List.of("REPEAT", "IF", "IFELSE", "MAKE", "LOCAL", "OUTPUT", "STOP")) {
+            String src = prim + " 1 [ ]";
             List<DecodedToken> decoded = decode(compute(src));
-            assertThat(decoded).as("%s should be a keyword", kw)
-                    .anyMatch(d -> d.typeIdx() == T_KEYWORD && d.length() == kw.length());
+            assertThat(decoded).as("%s should be a default-library function", prim)
+                    .anyMatch(d -> d.typeIdx() == T_FUNCTION
+                            && d.length() == prim.length()
+                            && (d.modifiers() & MOD_DEFAULT_LIBRARY) != 0);
+            assertThat(decoded).as("%s should not be tagged as keyword", prim)
+                    .noneMatch(d -> d.typeIdx() == T_KEYWORD && d.length() == prim.length());
         }
     }
 

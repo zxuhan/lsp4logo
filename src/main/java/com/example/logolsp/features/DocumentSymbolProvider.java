@@ -6,6 +6,7 @@ import com.example.logolsp.parser.ast.Ast.ProcedureDef;
 import com.example.logolsp.parser.ast.Ast.TopLevel;
 import org.eclipse.lsp4j.DocumentSymbol;
 import org.eclipse.lsp4j.SymbolKind;
+import org.eclipse.lsp4j.jsonrpc.CancelChecker;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,14 +34,22 @@ public final class DocumentSymbolProvider {
 
     /** Returns one {@link DocumentSymbol} per {@code TO} definition (with parameter children). */
     public static List<DocumentSymbol> documentSymbols(ParsedDocument doc) {
+        return documentSymbols(doc, NOOP);
+    }
+
+    /** Same as {@link #documentSymbols(ParsedDocument)}, but cooperates with cancellation. */
+    public static List<DocumentSymbol> documentSymbols(ParsedDocument doc, CancelChecker checker) {
         List<DocumentSymbol> result = new ArrayList<>();
         for (TopLevel item : doc.program().items()) {
+            checker.checkCanceled();
             if (!(item instanceof ProcedureDef def)) continue;
             if (def.nameToken().lexeme().isEmpty()) continue;
             result.add(symbolFor(def));
         }
         return result;
     }
+
+    private static final CancelChecker NOOP = () -> {};
 
     private static DocumentSymbol symbolFor(ProcedureDef def) {
         DocumentSymbol symbol = new DocumentSymbol();

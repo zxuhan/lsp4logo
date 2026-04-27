@@ -114,6 +114,39 @@ class HoverProviderTest {
         assertThat(h.getRange().getEnd().getCharacter()).isEqualTo(2);
     }
 
+    @Test
+    void user_procedure_hover_lifts_contiguous_doc_comment_block_above_TO() {
+        String src = ""
+                + "; Draw a square of the given side length.\n"
+                + "; The turtle returns to its starting heading.\n"
+                + "TO square :size\n"
+                + "  REPEAT 4 [ FD :size RT 90 ]\n"
+                + "END\n"
+                + "square 50\n";
+        Hover h = hover(src, position(src, "square", 3)); // call site
+        assertThat(h).isNotNull();
+        String md = h.getContents().getRight().getValue();
+        assertThat(md)
+                .contains("TO square :size")
+                .contains("Draw a square of the given side length.")
+                .contains("The turtle returns to its starting heading.")
+                .contains("User-defined procedure");
+    }
+
+    @Test
+    void user_procedure_hover_ignores_comments_separated_by_blank_lines() {
+        String src = ""
+                + "; an unrelated remark\n"
+                + "\n"
+                + "TO foo :size\n"
+                + "  FD :size\n"
+                + "END\n";
+        Hover h = hover(src, position(src, "foo", 1));
+        assertThat(h).isNotNull();
+        assertThat(h.getContents().getRight().getValue())
+                .doesNotContain("unrelated remark");
+    }
+
     // --- helpers -----------------------------------------------------------------
 
     private static Hover hover(String src, Position pos) {

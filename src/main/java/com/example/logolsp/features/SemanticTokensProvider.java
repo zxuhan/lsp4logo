@@ -7,6 +7,7 @@ import com.example.logolsp.builtins.LogoBuiltins;
 import com.example.logolsp.document.ParsedDocument;
 import com.example.logolsp.lexer.Token;
 import com.example.logolsp.lexer.TokenType;
+import com.example.logolsp.parser.LogoKeywords;
 import com.example.logolsp.parser.ast.Ast.BinaryOp;
 import com.example.logolsp.parser.ast.Ast.ColonVar;
 import com.example.logolsp.parser.ast.Ast.Command;
@@ -22,16 +23,16 @@ import com.example.logolsp.parser.ast.Ast.Statement;
 import com.example.logolsp.parser.ast.Ast.TopLevel;
 import com.example.logolsp.parser.ast.Ast.UnaryOp;
 import com.example.logolsp.parser.ast.Ast.WordRef;
+import com.example.logolsp.util.Names;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.SemanticTokens;
 import org.eclipse.lsp4j.SemanticTokensLegend;
+import org.eclipse.lsp4j.jsonrpc.CancelChecker;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 
 /**
  * Computes LSP semantic tokens for syntax highlighting.
@@ -42,7 +43,11 @@ import java.util.Set;
  * the difference.
  *
  * <p>ADR-011 records the decision to use LSP semantic tokens rather than a TextMate
- * grammar as the primary highlighting mechanism.
+ * grammar as the primary highlighting mechanism. The keyword set is the canonical one
+ * from {@link LogoKeywords} ({@code TO}, {@code END}); other "control-flow" primitives
+ * like {@code IF}, {@code REPEAT}, {@code MAKE} are highlighted as built-in functions
+ * because that is what they are — callable with the same calling convention as user
+ * procedures.
  *
  * <h2>Legend</h2>
  * Token types: {@code keyword, function, parameter, variable, string, number, comment,
@@ -50,10 +55,6 @@ import java.util.Set;
  * Modifiers: {@code declaration, defaultLibrary}.
  */
 public final class SemanticTokensProvider {
-
-    /** Language keywords (case-insensitive). */
-    private static final Set<String> KEYWORDS = Set.of(
-            "TO", "END", "IF", "IFELSE", "REPEAT", "MAKE", "LOCAL", "OUTPUT", "STOP");
 
     public static final List<String> TOKEN_TYPES = List.of(
             "keyword",    // 0
@@ -90,19 +91,26 @@ public final class SemanticTokensProvider {
 
     /** Computes the semantic tokens for the given document. */
     public static SemanticTokens compute(ParsedDocument doc, LogoBuiltins builtins) {
+        return compute(doc, builtins, NOOP);
+    }
+
+    /** Same as {@link #compute(ParsedDocument, LogoBuiltins)}, but cooperates with cancellation. */
+    public static SemanticTokens compute(ParsedDocument doc, LogoBuiltins builtins, CancelChecker checker) {
         List<SemToken> collected = new ArrayList<>();
-        collectComments(doc.tokens(), collected);
-        collectFromAst(doc.program(), doc.symbolTable(), builtins, collected);
+        collectComments(doc.tokens(), collected, checker);
+        collectFromAst(doc.program(), doc.symbolTable(), builtins, collected, checker);
         collected.sort(Comparator
                 .comparingInt(SemToken::line)
                 .thenComparingInt(SemToken::startChar));
+        checker.checkCanceled();
         return new SemanticTokens(deltaEncode(collected));
     }
 
     // --- collection --------------------------------------------------------------
 
-    private static void collectComments(List<Token> tokens, List<SemToken> out) {
+    private static void collectComments(List<Token> tokens, List<SemToken> out, CancelChecker checker) {
         for (Token t : tokens) {
+            checker.checkCanceled();
             if (t.type() == TokenType.COMMENT) {
                 SemToken st = fromToken(t, T_COMMENT, 0);
                 if (st != null) out.add(st);
@@ -111,8 +119,10 @@ public final class SemanticTokensProvider {
     }
 
     private static void collectFromAst(Program program, SymbolTable table,
-                                       LogoBuiltins builtins, List<SemToken> out) {
+                                       LogoBuiltins builtins, List<SemToken> out,
+                                       CancelChecker checker) {
         for (TopLevel item : program.items()) {
+            checker.checkCanceled();
             if (item instanceof ProcedureDef def) {
                 addToken(out, def.toKeyword(), T_KEYWORD, 0);
                 if (!def.nameToken().lexeme().isEmpty()) {
@@ -122,36 +132,37 @@ public final class SemanticTokensProvider {
                     addToken(out, p, T_PARAMETER, MOD_DECLARATION);
                 }
                 for (Statement s : def.body()) {
-                    collectStatement(s, def, table, builtins, out);
+                    collectStatement(s, def, table, builtins, out, checker);
                 }
                 if (def.endKeyword() != null) {
                     addToken(out, def.endKeyword(), T_KEYWORD, 0);
                 }
             } else if (item instanceof Statement stmt) {
-                collectStatement(stmt, null, table, builtins, out);
+                collectStatement(stmt, null, table, builtins, out, checker);
             }
         }
     }
 
     private static void collectStatement(Statement s, ProcedureDef enclosing,
                                          SymbolTable table, LogoBuiltins builtins,
-                                         List<SemToken> out) {
+                                         List<SemToken> out, CancelChecker checker) {
         if (!(s instanceof Command cmd)) return;
         classifyCallHead(cmd.head(), builtins, out);
         for (Expression arg : cmd.arguments()) {
-            collectExpression(arg, enclosing, table, builtins, out);
+            collectExpression(arg, enclosing, table, builtins, out, checker);
         }
     }
 
     private static void collectExpression(Expression e, ProcedureDef enclosing,
                                           SymbolTable table, LogoBuiltins builtins,
-                                          List<SemToken> out) {
+                                          List<SemToken> out, CancelChecker checker) {
+        checker.checkCanceled();
         if (e instanceof NumberLit n) {
             addToken(out, n.token(), T_NUMBER, 0);
         } else if (e instanceof ColonVar cv) {
             int typeIdx = T_VARIABLE;
             Scope scope = enclosing != null ? table.scopeOf(enclosing) : table.global();
-            String name = stripSigil(cv.token().lexeme());
+            String name = Names.stripSigil(cv.token().lexeme());
             var sym = scope.resolve(name);
             if (sym.isPresent() && sym.get().kind() == Symbol.Kind.PARAMETER) {
                 typeIdx = T_PARAMETER;
@@ -164,20 +175,20 @@ public final class SemanticTokensProvider {
         } else if (e instanceof FunctionCall fc) {
             classifyCallHead(fc.head(), builtins, out);
             for (Expression a : fc.arguments()) {
-                collectExpression(a, enclosing, table, builtins, out);
+                collectExpression(a, enclosing, table, builtins, out, checker);
             }
         } else if (e instanceof BinaryOp bo) {
-            collectExpression(bo.left(), enclosing, table, builtins, out);
+            collectExpression(bo.left(), enclosing, table, builtins, out, checker);
             addToken(out, bo.operator(), T_OPERATOR, 0);
-            collectExpression(bo.right(), enclosing, table, builtins, out);
+            collectExpression(bo.right(), enclosing, table, builtins, out, checker);
         } else if (e instanceof UnaryOp uo) {
             addToken(out, uo.operator(), T_OPERATOR, 0);
-            collectExpression(uo.operand(), enclosing, table, builtins, out);
+            collectExpression(uo.operand(), enclosing, table, builtins, out, checker);
         } else if (e instanceof ParenExpr pe) {
-            collectExpression(pe.inner(), enclosing, table, builtins, out);
+            collectExpression(pe.inner(), enclosing, table, builtins, out, checker);
         } else if (e instanceof ListLit list) {
             for (Expression el : list.elements()) {
-                collectExpression(el, enclosing, table, builtins, out);
+                collectExpression(el, enclosing, table, builtins, out, checker);
             }
         }
         // No classification for structural tokens ([ ], ( )) — clients colour them
@@ -186,8 +197,7 @@ public final class SemanticTokensProvider {
 
     private static void classifyCallHead(Token head, LogoBuiltins builtins, List<SemToken> out) {
         if (head.lexeme().isEmpty()) return;
-        String upper = head.lexeme().toUpperCase(Locale.ROOT);
-        if (KEYWORDS.contains(upper)) {
+        if (LogoKeywords.isKeyword(head.lexeme())) {
             addToken(out, head, T_KEYWORD, 0);
         } else if (builtins.lookup(head.lexeme()).isPresent()) {
             addToken(out, head, T_FUNCTION, MOD_DEFAULT_LIBRARY);
@@ -195,6 +205,8 @@ public final class SemanticTokensProvider {
             addToken(out, head, T_FUNCTION, 0);
         }
     }
+
+    private static final CancelChecker NOOP = () -> {};
 
     // --- encoding ----------------------------------------------------------------
 
@@ -231,12 +243,6 @@ public final class SemanticTokensProvider {
         int length = e.getCharacter() - s.getCharacter();
         if (length <= 0) return null;
         return new SemToken(s.getLine(), s.getCharacter(), length, typeIdx, modifiers);
-    }
-
-    private static String stripSigil(String lexeme) {
-        if (lexeme.isEmpty()) return lexeme;
-        char c = lexeme.charAt(0);
-        return (c == ':' || c == '"') ? lexeme.substring(1) : lexeme;
     }
 
     private record SemToken(int line, int startChar, int length, int typeIdx, int modifiers) {}

@@ -18,9 +18,11 @@ import com.example.logolsp.parser.ast.Ast.Statement;
 import com.example.logolsp.parser.ast.Ast.TopLevel;
 import com.example.logolsp.parser.ast.Ast.UnaryOp;
 import com.example.logolsp.parser.ast.Ast.WordRef;
+import com.example.logolsp.util.Names;
+import com.example.logolsp.util.Ranges;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Position;
-import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.jsonrpc.CancelChecker;
 
 import java.util.List;
 import java.util.Optional;
@@ -52,58 +54,66 @@ public final class DefinitionProvider {
      * resolution.
      */
     public static List<Location> definition(ParsedDocument doc, Position pos) {
-        Hit hit = findHit(doc.program(), pos);
+        return definition(doc, pos, NOOP);
+    }
+
+    /** Same as {@link #definition(ParsedDocument, Position)}, but cooperates with cancellation. */
+    public static List<Location> definition(ParsedDocument doc, Position pos, CancelChecker checker) {
+        Hit hit = findHit(doc.program(), pos, checker);
         if (hit == null) return List.of();
+        checker.checkCanceled();
         return resolve(hit, doc.symbolTable(), doc.uri());
     }
 
     // --- AST walk ----------------------------------------------------------------
 
-    private static Hit findHit(Program program, Position pos) {
+    private static Hit findHit(Program program, Position pos, CancelChecker checker) {
         for (TopLevel item : program.items()) {
-            if (!contains(item.range(), pos)) continue;
+            checker.checkCanceled();
+            if (!Ranges.contains(item.range(), pos)) continue;
             if (item instanceof ProcedureDef def) {
-                Hit h = inProcedureDef(def, pos);
+                Hit h = inProcedureDef(def, pos, checker);
                 if (h != null) return h;
             } else if (item instanceof Statement stmt) {
-                Hit h = inStatement(stmt, pos, null);
+                Hit h = inStatement(stmt, pos, null, checker);
                 if (h != null) return h;
             }
         }
         return null;
     }
 
-    private static Hit inProcedureDef(ProcedureDef def, Position pos) {
-        if (contains(def.nameToken().range(), pos)) {
+    private static Hit inProcedureDef(ProcedureDef def, Position pos, CancelChecker checker) {
+        if (Ranges.contains(def.nameToken().range(), pos)) {
             return new Hit(def.nameToken(), Kind.PROC_NAME_DEF, def);
         }
         for (Token p : def.parameterTokens()) {
-            if (contains(p.range(), pos)) {
+            if (Ranges.contains(p.range(), pos)) {
                 return new Hit(p, Kind.PARAM_DEF, def);
             }
         }
         for (Statement s : def.body()) {
-            Hit h = inStatement(s, pos, def);
+            Hit h = inStatement(s, pos, def, checker);
             if (h != null) return h;
         }
         return null;
     }
 
-    private static Hit inStatement(Statement s, Position pos, ProcedureDef enclosing) {
+    private static Hit inStatement(Statement s, Position pos, ProcedureDef enclosing, CancelChecker checker) {
         if (!(s instanceof Command cmd)) return null;
-        if (contains(cmd.head().range(), pos)) {
+        if (Ranges.contains(cmd.head().range(), pos)) {
             return new Hit(cmd.head(), Kind.PROC_CALL, enclosing);
         }
         for (Expression arg : cmd.arguments()) {
-            if (contains(arg.range(), pos)) {
-                Hit h = inExpression(arg, pos, enclosing);
+            if (Ranges.contains(arg.range(), pos)) {
+                Hit h = inExpression(arg, pos, enclosing, checker);
                 if (h != null) return h;
             }
         }
         return null;
     }
 
-    private static Hit inExpression(Expression e, Position pos, ProcedureDef enclosing) {
+    private static Hit inExpression(Expression e, Position pos, ProcedureDef enclosing, CancelChecker checker) {
+        checker.checkCanceled();
         if (e instanceof ColonVar cv) {
             return new Hit(cv.token(), Kind.VAR_REF, enclosing);
         }
@@ -111,40 +121,39 @@ public final class DefinitionProvider {
             return new Hit(wr.token(), Kind.PROC_CALL, enclosing);
         }
         if (e instanceof FunctionCall fc) {
-            if (contains(fc.head().range(), pos)) {
+            if (Ranges.contains(fc.head().range(), pos)) {
                 return new Hit(fc.head(), Kind.PROC_CALL, enclosing);
             }
             for (Expression a : fc.arguments()) {
-                if (contains(a.range(), pos)) {
-                    Hit h = inExpression(a, pos, enclosing);
+                if (Ranges.contains(a.range(), pos)) {
+                    Hit h = inExpression(a, pos, enclosing, checker);
                     if (h != null) return h;
                 }
             }
             return null;
         }
         if (e instanceof BinaryOp bo) {
-            if (contains(bo.left().range(), pos)) return inExpression(bo.left(), pos, enclosing);
-            if (contains(bo.right().range(), pos)) return inExpression(bo.right(), pos, enclosing);
+            if (Ranges.contains(bo.left().range(), pos)) return inExpression(bo.left(), pos, enclosing, checker);
+            if (Ranges.contains(bo.right().range(), pos)) return inExpression(bo.right(), pos, enclosing, checker);
             return null;
         }
         if (e instanceof UnaryOp uo) {
-            if (contains(uo.operand().range(), pos)) return inExpression(uo.operand(), pos, enclosing);
+            if (Ranges.contains(uo.operand().range(), pos)) return inExpression(uo.operand(), pos, enclosing, checker);
             return null;
         }
         if (e instanceof ParenExpr pe) {
-            if (contains(pe.inner().range(), pos)) return inExpression(pe.inner(), pos, enclosing);
+            if (Ranges.contains(pe.inner().range(), pos)) return inExpression(pe.inner(), pos, enclosing, checker);
             return null;
         }
         if (e instanceof ListLit list) {
             for (Expression el : list.elements()) {
-                if (contains(el.range(), pos)) {
-                    Hit h = inExpression(el, pos, enclosing);
+                if (Ranges.contains(el.range(), pos)) {
+                    Hit h = inExpression(el, pos, enclosing, checker);
                     if (h != null) return h;
                 }
             }
             return null;
         }
-        // NumberLit, QuoteWord: not click-resolvable in Phase 5.
         return null;
     }
 
@@ -159,7 +168,7 @@ public final class DefinitionProvider {
                 Scope scope = hit.enclosing != null
                         ? symbolTable.scopeOf(hit.enclosing)
                         : symbolTable.global();
-                String name = stripSigil(hit.token.lexeme());
+                String name = Names.stripSigil(hit.token.lexeme());
                 return scope.resolve(name)
                         .map(s -> List.of(new Location(uri, s.defRange())))
                         .orElse(List.of());
@@ -174,27 +183,11 @@ public final class DefinitionProvider {
         return List.of();
     }
 
-    // --- helpers -----------------------------------------------------------------
-
-    private static boolean contains(Range range, Position pos) {
-        if (range == null || pos == null) return false;
-        int pl = pos.getLine(), pc = pos.getCharacter();
-        Position s = range.getStart(), e = range.getEnd();
-        if (pl < s.getLine() || pl > e.getLine()) return false;
-        if (pl == s.getLine() && pc < s.getCharacter()) return false;
-        if (pl == e.getLine() && pc > e.getCharacter()) return false;
-        return true;
-    }
-
-    private static String stripSigil(String lexeme) {
-        if (lexeme.isEmpty()) return lexeme;
-        char c = lexeme.charAt(0);
-        return (c == ':' || c == '"') ? lexeme.substring(1) : lexeme;
-    }
-
     private record Hit(Token token, Kind kind, ProcedureDef enclosing) {}
 
     private enum Kind {
         PROC_NAME_DEF, PARAM_DEF, VAR_REF, PROC_CALL,
     }
+
+    private static final CancelChecker NOOP = () -> {};
 }
