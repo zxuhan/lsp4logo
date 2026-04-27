@@ -226,8 +226,24 @@ public final class LogoParser {
                 args.add(e);
                 lastRange = e.range();
             }
+            if (args.size() == arity && isExcessArgument(peek())) {
+                emitError(peek().range(),
+                        "too many arguments for " + head.lexeme()
+                                + " (expected " + arity + ")");
+                synchronizeToLineBreakOrEnd();
+            }
         }
         return new Command(head, args, new Range(head.range().getStart(), lastRange.getEnd()));
+    }
+
+    /**
+     * True if {@code t} can only continue the current command's argument list — i.e. it
+     * isn't a statement boundary and it isn't a {@link TokenType#WORD} that could plausibly
+     * start a peer statement. We use this to diagnose excess arguments without false-firing
+     * on juxtaposed commands like {@code FD 10 RT 90}.
+     */
+    private boolean isExcessArgument(Token t) {
+        return !isStatementBoundary(t) && t.type() != TokenType.WORD;
     }
 
     // --- expressions ---------------------------------------------------------------

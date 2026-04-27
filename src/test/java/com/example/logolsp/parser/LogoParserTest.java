@@ -238,6 +238,48 @@ class LogoParserTest {
         assertThat(foundGood).isTrue();
     }
 
+    @Test
+    void too_many_arguments_emits_diagnostic() {
+        ParseResult r = parse("FD 10 20\n");
+        assertThat(r.diagnostics())
+                .anyMatch(d -> d.getMessage().contains("too many arguments")
+                        && d.getMessage().contains("FD"));
+    }
+
+    @Test
+    void too_few_arguments_emits_diagnostic() {
+        ParseResult r = parse("SETXY 1\n");
+        assertThat(r.diagnostics())
+                .anyMatch(d -> d.getMessage().contains("too few arguments")
+                        && d.getMessage().contains("SETXY"));
+    }
+
+    @Test
+    void juxtaposed_commands_on_same_line_are_not_too_many_args() {
+        // FD 10 RT 90 is two statements on one line, not "too many for FD".
+        ParseResult r = parse("FD 10 RT 90\n");
+        assertThat(r.diagnostics())
+                .noneMatch(d -> d.getMessage().contains("too many arguments"));
+        assertThat(r.program().items()).hasSize(2);
+    }
+
+    @Test
+    void crlf_line_endings_parse_cleanly() {
+        ParseResult r = parse("TO greet\r\n  FD 10\r\nEND\r\n");
+        assertThat(r.diagnostics()).isEmpty();
+        assertThat(r.program().items()).hasSize(1);
+    }
+
+    @Test
+    void mixed_case_keywords_and_builtin_aliases_are_recognised() {
+        // to/end keyword recognition + Fd alias should both work case-insensitively.
+        ParseResult r = parse("to greet\n  Fd 10\nend\n");
+        assertThat(r.diagnostics()).isEmpty();
+        assertThat(r.program().items()).hasSize(1);
+        ProcedureDef def = (ProcedureDef) r.program().items().get(0);
+        assertThat(def.nameToken().lexeme()).isEqualTo("greet");
+    }
+
     // --- helpers ----------------------------------------------------------------------
 
     private static ParseResult parse(String source) {
