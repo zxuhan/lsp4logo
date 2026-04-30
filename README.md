@@ -1,4 +1,4 @@
-# logo-lsp
+# LOGO-LSP
 
 A production-grade [Language Server Protocol](https://microsoft.github.io/language-server-protocol/)
 implementation for the [Turtle Academy](https://turtleacademy.com/) dialect of LOGO.
