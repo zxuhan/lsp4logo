@@ -8,6 +8,8 @@ a TCP socket, and is designed to be consumed by
 [LSP4IJ](https://github.com/redhat-developer/lsp4ij) in JetBrains IDEs or any other
 generic LSP client.
 
+![Demo: hover, go-to-definition, completion, and diagnostics in IntelliJ via LSP4IJ](docs/demo.gif)
+
 ---
 
 ## Features

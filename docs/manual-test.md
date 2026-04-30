@@ -23,7 +23,10 @@ Confirm `build/libs/logo-lsp.jar` exists and is ~1 MB.
 1. In IntelliJ: **Settings → Languages & Frameworks → Language Servers**.
 2. **+ New Language Server**:
    - **Name:** `logo-lsp`
-   - **Command:** `java -jar /absolute/path/to/build/libs/logo-lsp.jar`
+   - **Command:** `java -jar <absolute-path-to-logo-lsp.jar>`. LSP4IJ does **not**
+     expand `$VARS`, `~`, or relative paths, so paste a real absolute path. From
+     this repo's root, `echo "$(pwd)/build/libs/logo-lsp.jar"` prints the exact
+     value to drop in after `java -jar `.
    - **Mappings → File name patterns:** `*.logo`
 3. Apply. A new **LSP Console** tool window appears (View → Tool Windows → LSP Console).
 
